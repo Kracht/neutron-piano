@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neutron Piano</title>
+<style>
+:root { color-scheme: dark;
+  --bg: #07080b; --panel: #0e1016; --line: #1d2130; --ink: #c9cfdc; --dim: #6c748a; --accent: #ffb347;
+  --font: ui-monospace, "JetBrains Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 12px/1.45 var(--font); }
+body { display: flex; flex-direction: column; }
+header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.brand b { letter-spacing: .3em; color: var(--accent); margin-right: 10px; }
+.brand span { color: var(--dim); }
+.spacer { flex: 1; }
+button, select { font: inherit; color: var(--ink); background: #151925; border: 1px solid var(--line); padding: 5px 9px; cursor: pointer; }
+button.primary { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 700; letter-spacing: .1em; }
+button.primary.playing { background: transparent; color: var(--accent); }
+button.on { background: var(--ink); color: var(--bg); }
+button:disabled { opacity: .4; cursor: default; }
+.oct { display: inline-flex; align-items: center; gap: 4px; }
+.oct button { padding: 5px 7px; min-width: 26px; }
+#oct-val { min-width: 2.5em; text-align: center; color: var(--ink); }
+#midi-cfg[hidden] { display: none; }
+#midi-cfg { display: inline-flex; gap: 10px; align-items: center; }
+label { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
+input[type=range] { width: 90px; accent-color: var(--accent); }
+#feed::before { content: "●"; margin-right: 6px; color: var(--dim); }
+#feed.ok::before { color: #59d98e; } #feed.stale::before { color: var(--accent); } #feed.err::before { color: #ff5d5d; }
+#stage { position: relative; flex: 1; min-height: 0; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+#info { position: absolute; left: 16px; bottom: 10px; color: var(--dim); pointer-events: none; }
+
+dialog#about { width: min(780px, calc(100% - 32px)); max-height: calc(100% - 48px); padding: 0; background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
+dialog#about::backdrop { background: rgba(4, 5, 8, .78); }
+.about-head { position: sticky; top: 0; display: flex; align-items: center; gap: 12px; padding: 12px 22px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.about-head b { letter-spacing: .3em; color: var(--accent); }
+.about-body { padding: 4px 26px 26px; font: 15px/1.62 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #b4bccb; }
+.about-body .lead { font-size: 17px; color: var(--ink); margin-top: 20px; }
+.about-body h2 { font: 700 11px/1.3 var(--font); letter-spacing: .25em; text-transform: uppercase; color: var(--accent); margin: 30px 0 8px; }
+.about-body h2.sci { color: #8fb8ff; border-top: 1px solid var(--line); padding-top: 26px; margin-top: 34px; }
+.about-body b, .about-body strong { color: var(--ink); }
+.about-body code, .about-body .m { font: 13px var(--font); color: var(--ink); }
+.about-body a { color: var(--accent); }
+.about-body ul { padding-left: 20px; } .about-body li { margin: 4px 0; }
+.about-body table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 8px 0; }
+.about-body td { border-top: 1px solid var(--line); padding: 6px 10px 6px 0; vertical-align: top; }
+.about-body td:first-child { white-space: nowrap; color: var(--ink); }
+.sw { display: inline-block; width: 10px; height: 10px; vertical-align: -1px; margin: 0 2px; }
+.about-foot { display: flex; gap: 10px; justify-content: flex-end; padding-top: 22px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><b>NEUTRON PIANO</b><span>25 neutron monitors · one key per station</span></div>
+  <button id="btn-audio" class="primary">Start sound</button>
+  <button id="btn-live" class="on">LIVE</button>
+  <label>Scale
+    <select id="scale">
+      <option value="apent3" selected>A minor pent., 3 oct.</option>
+      <option value="0,3,5,7,10">Minor pentatonic</option>
+      <option value="0,2,4,7,9">Major pentatonic</option>
+      <option value="0,2,3,7,8">Hirajoshi</option>
+      <option value="0,2,4,6,8,10">Whole tone</option>
+      <option value="0,2,4,5,7,9,11">Major</option>
+    </select>
+  </label>
+  <label>Voice
+    <select id="voice">
+      <option value="piano" selected>Piano</option>
+      <option value="harp">Harp</option>
+      <option value="bell">Bell</option>
+    </select>
+  </label>
+  <span class="oct"><label>Octave</label>
+    <button id="oct-down" title="Octave down">−</button><span id="oct-val"></span><button id="oct-up" title="Octave up">+</button>
+  </span>
+  <label>Density <input id="density" type="range" min="0.2" max="3" step="0.05" value="1"></label>
+  <label>Sensitivity <input id="sens" type="range" min="0" max="1" step="0.01" value="0.4"></label>
+  <label>Volume <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"></label>
+  <label>Reverb
+    <select id="verb">
+      <option value="off">off</option>
+      <option value="room" selected>subtle</option>
+      <option value="hall">wide</option>
+    </select>
+  </label>
+  <label>Delay
+    <select id="delay">
+      <option value="off" selected>off</option>
+      <option value="short">short</option>
+      <option value="long">long</option>
+    </select>
+  </label>
+  <button id="btn-midi" title="Send notes to a MIDI device (Web MIDI)">MIDI out</button>
+  <span id="midi-cfg" hidden>
+    <select id="midi-port"><option value="">no output</option></select>
+    <label>Ch <select id="midi-ch"></select></label>
+    <label><input id="synth" type="checkbox" checked> internal synth</label>
+  </span>
+  <span class="spacer"></span>
+  <span id="feed">NMDB …</span>
+  <button id="btn-about" title="What am I listening to?">About</button>
+</header>
+<dialog id="about" aria-labelledby="about-title">
+  <form method="dialog" class="about-head">
+    <b id="about-title">ABOUT</b><span class="spacer"></span><button value="close" aria-label="Close">Close ✕</button>
+  </form>
+  <div class="about-body">
+    <p class="lead">You are listening to cosmic rays. Particles from exploded stars and other galaxies hit Earth's atmosphere all the time. Neutron monitors at 25 places around the world count the fragments that reach the ground. Here every monitor is one piano key: the more it counts, the more often and the harder its key is struck.</p>
+
+    <h2>What you hear</h2>
+    <ul>
+      <li><b>One key per station.</b> Keys on the left belong to stations near the poles and play low notes. Keys on the right belong to stations closer to the equator and play high notes.</li>
+      <li><b>A normal day</b> is a calm, irregular sprinkle of notes, like rain. A station that counts a little more than it did over the past day plays more often and louder. If it counts less, it plays more quietly and less often.</li>
+      <li><b>When the Sun erupts</b> and a cloud of magnetised gas (a coronal mass ejection) sweeps past Earth, it shields us from part of the cosmic rays. Within hours, counts drop by a few percent all over the world. This is called a <b>Forbush decrease</b>, and the piano falls quiet, sometimes for days.</li>
+      <li><b>A few times per solar cycle</b> the Sun itself accelerates particles hard enough for them to reach the ground. In such a <b>ground level enhancement</b> the polar keys on the left suddenly start hammering.</li>
+    </ul>
+
+    <h2>What you see</h2>
+    <ul>
+      <li>The <b>keys</b> are tinted by how far each station is from its usual level: <span class="sw" style="background:#ffd27a"></span><span class="sw" style="background:#c2481a"></span> orange means more particles than usual, <span class="sw" style="background:#1f63c4"></span><span class="sw" style="background:#9be7ff"></span> blue means fewer. The white line on each key is the same value as a needle. A key lights up when it is struck.</li>
+      <li>The picture below the keys is the <b>last 24 hours</b>, with the newest minute at the top. Each column is one station. Times are in UTC.</li>
+      <li><b>Click or drag in the history</b> to replay it at 15 minutes per second. When the replay reaches the present it switches back to LIVE, and the LIVE button jumps there directly.</li>
+    </ul>
+
+    <h2>Controls</h2>
+    <table>
+      <tr><td>Scale</td><td>Which notes the keys play. The default spreads A minor pentatonic over three octaves, so neighbouring stations sometimes share a note. The other scales give every station its own step.</td></tr>
+      <tr><td>Voice</td><td>Piano, a plucked harp, or a soft bell.</td></tr>
+      <tr><td>Octave − / +</td><td>Moves everything down or up by an octave.</td></tr>
+      <tr><td>Density</td><td>How many notes there are overall.</td></tr>
+      <tr><td>Sensitivity</td><td>How strongly small changes in the counts change the number of notes. Turned to zero, every station plays at the same rate.</td></tr>
+      <tr><td>Reverb, Delay</td><td>Room and echo.</td></tr>
+      <tr><td>MIDI out</td><td>Sends the notes to a synthesizer or music software over Web MIDI (Chrome, Edge, Firefox). The internal sound can be switched off.</td></tr>
+    </table>
+
+    <h2 class="sci">For the detector community</h2>
+    <p><b>Data.</b> Real-time 1-minute data from the <a href="https://www.nmdb.eu" target="_blank" rel="noopener">Neutron Monitor Database (NMDB)</a>: revised values where available, otherwise original, corrected for atmospheric pressure and detector efficiency. A small server-side proxy fetches the last 24 h for all stations and caches it for 55 s. The page reloads every minute. The header shows how old the newest minute is. NMDB data usually arrive with a delay of a few minutes, and the delay differs from station to station.</p>
+    <p><b>Detectors.</b> Primary cosmic rays (about 90 % protons, about 9 % helium nuclei, the rest heavier nuclei) with energies from about 1 GeV to a few tens of GeV start hadronic cascades in the atmosphere. Neutron monitors record the nucleonic component that reaches the ground. In the standard NM64 design, incoming hadrons produce evaporation neutrons in a lead producer. These neutrons are thermalised in polyethylene and counted in BF<sub>3</sub> or <sup>3</sup>He proportional counters. Count rates depend strongly on altitude: high stations such as JUNG1, SOPO and DOMC count more and respond more strongly.</p>
+    <p><b>Key order: cutoff rigidity.</b> The geomagnetic field deflects charged particles. Rigidity (momentum per charge, in GV) determines how strongly. The vertical cutoff rigidity R<sub>c</sub> of a site is roughly the minimum rigidity a particle needs to arrive there from the zenith. It is near 0 GV at the poles, where the atmosphere sets the effective threshold at roughly 1 GV, and rises to more than 8 GV at ATHN and MXCO. The keyboard is ordered by R<sub>c</sub>, which makes it a coarse spectrometer: modulation effects are strongest in the low-rigidity part of the spectrum, so Forbush decreases are usually deepest and GLEs strongest on the left. The R<sub>c</sub> values used here are approximate and do not track the secular change of the geomagnetic field.</p>
+    <p><b>From counts to notes.</b></p>
+    <table>
+      <tr><td>Smoothing</td><td>15-minute trailing mean of the 1-minute counts (at least 5 valid minutes in the window).</td></tr>
+      <tr><td>Deviation <span class="m">d</span></td><td>Smoothed rate relative to the median of the station's own smoothed rate over the last 24 h, in %. The colour scale saturates at ±2 %.</td></tr>
+      <tr><td>Strike rate</td><td><span class="m">λ = 0.35 s⁻¹ · density · exp(k · d)</span>, with <span class="m">k</span> = sensitivity (default 0.4, so +1 % gives about 1.5× the rate) and <span class="m">d</span> clamped to ±8 %. Strikes are drawn independently per station as a Poisson process, evaluated every 20 ms.</td></tr>
+      <tr><td>Velocity</td><td>Random 0.45–1.0, scaled by <span class="m">(1 + d/4)</span>.</td></tr>
+      <tr><td>Pitch, pan</td><td>R<sub>c</sub> rank, mapped to scale steps and stereo position from left to right.</td></tr>
+      <tr><td>Gaps</td><td>A station with no value in the last 30 minutes stays silent.</td></tr>
+    </table>
+    <p><b>What the baseline hides.</b> The reference is a running 24-hour median, not a long-term baseline. The piano therefore plays departures from the past day, not absolute flux. Slow variations such as the 11-year solar cycle drop out completely. A Forbush decrease that lasts longer than about half a day gradually pulls the median down with it, so a deep, long event sounds less dramatic than it is, and its recovery can sound like a slight excess. Faster structure does come through: the diurnal anisotropy (a few tenths of a percent) can be heard as a slow daily wave whose phase differs from station to station, and the residual barometric effect of storms shows up wherever the pressure correction is imperfect.</p>
+
+    <h2>Acknowledgements</h2>
+    <p>We acknowledge the NMDB database (<a href="https://www.nmdb.eu" target="_blank" rel="noopener">www.nmdb.eu</a>), founded under the European Union's FP7 programme (contract no. 213007), for providing data. The data of each neutron monitor are provided by the institute that operates it.</p>
+
+    <form method="dialog" class="about-foot">
+      <button value="close">Close</button>
+      <button value="start" class="primary" id="about-start">Start listening</button>
+    </form>
+  </div>
+</dialog>
+
+<section id="stage">
+  <canvas id="cv"></canvas>
+  <div id="info"></div>
+</section>
+
+<script>
+'use strict';
+/* Neutron Piano: every NMDB neutron monitor is one key. Each station
+ * strikes its key as a Poisson process whose rate follows the station's
+ * count rate (15-min mean, deviation from the 24-h median), so a Forbush
+ * decrease after a CME empties the keyboard. Keys are ordered by cutoff
+ * rigidity: polar stations (low energy threshold) on the left = low notes,
+ * equatorial stations (only hard particles) on the right = high notes. */
+
+const MIN = 60_000, N = 1440, POLL = 60_000;
+const RC = {
+  TERA: 0.0, DOMC: 0.01, SOPO: 0.1, THUL: 0.3, INVK: 0.3, FSMT: 0.3, NAIN: 0.3,
+  PWNK: 0.3, TXBY: 0.48, APTY: 0.65, OULU: 0.81, KERG: 1.14, YKTK: 1.65,
+  KIEL2: 2.36, NEWK: 2.4, DRBS: 3.18, IRKT: 3.64, LMKS: 3.84, JUNG1: 4.49,
+  BKSN: 5.7, ROME: 6.27, AATB: 6.69, CALM: 6.95, MXCO: 8.28, ATHN: 8.53,
+};
+const S = { t0: 0, stations: [], dev: [], last: -1, img: null, hits: [], mode: 'live', t: 0, speed: 15, oct: -1 };
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const nan = () => new Float32Array(N).fill(NaN);
+
+/* ---------------------------------------------------------------- data */
+
+function smooth(a, w) {
+  const out = nan(); let sum = 0, cnt = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (Number.isFinite(a[i])) { sum += a[i]; cnt++; }
+    const j = i - w;
+    if (j >= 0 && Number.isFinite(a[j])) { sum -= a[j]; cnt--; }
+    if (cnt >= w / 3 && Number.isFinite(a[i])) out[i] = sum / cnt;
+  }
+  return out;
+}
+function median(a) {
+  const v = Array.from(a).filter(Number.isFinite).sort((x, y) => x - y);
+  return v.length ? v[v.length >> 1] : NaN;
+}
+function lastValid(a) { for (let i = a.length - 1; i >= 0; i--) if (Number.isFinite(a[i])) return i; return -1; }
+function at(a, f) {
+  const i = Math.floor(f);
+  for (let j = i; j >= Math.max(0, i - 30); j--) if (Number.isFinite(a[j])) return a[j];
+  return NaN;
+}
+
+async function refresh() {
+  const feed = document.getElementById('feed');
+  try {
+    const r = await fetch('nmdb.php?days=1', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    const j = await r.json();
+    S.t0 = Math.floor(Date.now() / MIN) * MIN - (N - 1) * MIN;
+    const cols = j.stations.map((s, k) => ({ s, k })).sort((a, b) => (RC[a.s] ?? 99) - (RC[b.s] ?? 99));
+    const data = cols.map(nan);
+    for (const row of j.rows) {
+      const i = Math.round((Date.parse(row[0]) - S.t0) / MIN);
+      if (i < 0 || i >= N) continue;
+      cols.forEach(({ k }, c) => { const x = row[k + 1]; if (x != null) data[c][i] = x; });
+    }
+    S.dev = data.map(a => { const sm = smooth(a, 15), m = median(sm); return sm.map(x => (x / m - 1) * 100); });
+    if (S.stations.join() !== cols.map(c => c.s).join()) S.hits = cols.map(() => ({ t: -1e9, v: 0 }));
+    S.stations = cols.map(c => c.s);
+    S.last = Math.max(...S.dev.map(lastValid));
+    paintWaterfall();
+    const age = Math.round((Date.now() - (S.t0 + S.last * MIN)) / MIN);
+    feed.className = age < 20 ? 'ok' : 'stale'; feed.textContent = `NMDB ${age} min old`;
+  } catch (e) {
+    feed.className = 'err'; feed.textContent = 'NMDB error';
+  }
+}
+
+/* ---------------------------------------------------------------- colour */
+
+const STOPS = [[0, '#9be7ff'], [.25, '#1f63c4'], [.5, '#0b0d12'], [.75, '#c2481a'], [1, '#ffd27a']]
+  .map(([p, h]) => [p, [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16))]);
+function diverge(t) {           // t in 0..1, dark centre
+  t = clamp(t, 0, 1);
+  let i = 0; while (i < STOPS.length - 2 && t > STOPS[i + 1][0]) i++;
+  const [a, A] = STOPS[i], [b, B] = STOPS[i + 1], u = (t - a) / (b - a);
+  return A.map((x, k) => Math.round(x + (B[k] - x) * u));
+}
+const devColor = d => Number.isFinite(d) ? diverge(0.5 + d / 4) : [14, 15, 20];   // ±2 % full scale
+
+function paintWaterfall() {
+  const n = S.stations.length; if (!n) return;
+  const img = new ImageData(n, N);
+  for (let i = 0; i < N; i++) for (let c = 0; c < n; c++) {
+    const [r, g, b] = devColor(S.dev[c][i]), o = ((N - 1 - i) * n + c) * 4;
+    img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = b; img.data[o + 3] = 255;
+  }
+  S.img = document.createElement('canvas'); S.img.width = n; S.img.height = N;
+  S.img.getContext('2d').putImageData(img, 0, 0);
+}
+
+/* ---------------------------------------------------------------- audio */
+
+let ac = null, bus = null, out = null, wets = null, dly = null;
+// room: subtle, short; hall: long tail
+const VERBS = { room: { sec: 2.4, decay: 4, wet: 0.18 }, hall: { sec: 4.5, decay: 3.2, wet: 0.55 } };
+function initAudio() {
+  ac = new AudioContext();
+  out = ac.createGain(); out.gain.value = +document.getElementById('vol').value;
+  // makeup gain after a gentle compressor keeps chords from clipping
+  const comp = ac.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 3; comp.knee.value = 12;
+  const makeup = ac.createGain(); makeup.gain.value = 1.6;
+  out.connect(comp).connect(makeup).connect(ac.destination);
+  // voices -> bus -> out (dry); bus -> delay -> out; bus + delay -> reverbs -> out
+  bus = ac.createGain(); bus.connect(out);
+  const verbIn = ac.createGain(); bus.connect(verbIn);
+  dly = { in: ac.createGain(), node: ac.createDelay(2), fb: ac.createGain(), lp: ac.createBiquadFilter(), wet: ac.createGain() };
+  dly.in.gain.value = 0; dly.lp.type = 'lowpass'; dly.lp.frequency.value = 3200; dly.wet.gain.value = 0.35;
+  bus.connect(dly.in).connect(dly.node).connect(dly.lp).connect(dly.fb).connect(dly.node);
+  dly.lp.connect(dly.wet); dly.wet.connect(out); dly.wet.connect(verbIn);
+  wets = {};
+  for (const [name, v] of Object.entries(VERBS)) {
+    const verb = ac.createConvolver(), len = ac.sampleRate * v.sec;
+    verb.buffer = ac.createBuffer(2, len, ac.sampleRate);
+    for (let c = 0; c < 2; c++) {
+      const d = verb.buffer.getChannelData(c);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, v.decay);
+    }
+    const g = ac.createGain(); g.gain.value = 0;
+    verbIn.connect(verb).connect(g).connect(out);
+    wets[name] = g;
+  }
+  applyVerb(); applyDelay();
+}
+function applyVerb() {
+  if (!wets) return;
+  const sel = document.getElementById('verb').value;
+  for (const [name, g] of Object.entries(wets)) g.gain.setTargetAtTime(name === sel ? VERBS[name].wet : 0, ac.currentTime, 0.1);
+}
+
+// simple feedback delay; switching off only closes the input so the tail rings out
+const DELAYS = { short: { time: 0.24, fb: 0.3 }, long: { time: 0.52, fb: 0.42 } };
+function applyDelay() {
+  if (!dly) return;
+  const v = DELAYS[document.getElementById('delay').value], t = ac.currentTime;
+  dly.in.gain.setTargetAtTime(v ? 1 : 0, t, 0.02);
+  if (v) { dly.node.delayTime.setTargetAtTime(v.time, t, 0.05); dly.fb.gain.setTargetAtTime(v.fb, t, 0.05); }
+}
+
+function freqOf(c, n) {
+  return baseFreq(c, n) * Math.pow(2, S.oct);
+}
+function baseFreq(c, n) {
+  if (document.getElementById('scale').value === 'apent3') {
+    // A minor pentatonic from A3, 15 notes over three octaves, so
+    // neighbouring stations sometimes share a note
+    const k = Math.round(c * 14 / Math.max(1, n - 1)), deg = [0, 3, 5, 7, 10];
+    return 220 * Math.pow(2, Math.floor(k / 5) + deg[k % 5] / 12);
+  }
+  const steps = document.getElementById('scale').value.split(',').map(Number);
+  const k = Math.round(c * 24 / Math.max(1, n - 1));     // 25 scale steps across the keyboard
+  const oct = Math.floor(k / steps.length), deg = steps[k % steps.length];
+  const base = steps.length >= 7 ? 130.81 : 110;          // C3 for heptatonic, A2 otherwise
+  return base * Math.pow(2, oct + deg / 12);
+}
+
+function strike(c, n, vel) {
+  const f = freqOf(c, n), voice = document.getElementById('voice').value;
+  const dur = voice === 'bell' ? 0.35 + Math.random() * 0.9
+    : voice === 'harp' ? clamp(7 - Math.log2(f / 110) * 1.2, 1.5, 7)
+    : clamp(5.5 - Math.log2(f / 110) * 0.9, 1.2, 5.5);
+  midiNote(f, vel, voice === 'bell' ? dur : Math.min(dur, 2));
+  if (document.getElementById('synth').checked) synth(c, n, f, vel, voice, dur);
+}
+
+// Karplus-Strong string, rendered once per pitch into a buffer: a DelayNode
+// loop cannot go below one render quantum (128 samples), which caps its pitch
+// near 375 Hz. Two-point average in the loop damps the highs, a first-order
+// allpass supplies the fractional part of the period so the string is in tune.
+const strings = new Map();
+function stringBuffer(f, dur) {
+  const key = `${f.toFixed(3)}/${Math.random() * 3 | 0}`;   // three takes per pitch
+  if (strings.has(key)) return strings.get(key);
+  const sr = ac.sampleRate, len = Math.floor(sr * dur), y = new Float32Array(len);
+  const P = sr / f, L = Math.max(2, Math.floor(P - 0.5)), fr = P - 0.5 - L, C = (1 - fr) / (1 + fr);
+  const g = Math.pow(10, -3 / (f * dur));                  // about -60 dB after dur
+  // excitation: one period of softened noise, plucked a seventh along the string
+  const ex = new Float32Array(L); let lp = 0;
+  for (let i = 0; i < L; i++) { lp += 0.6 * (Math.random() * 2 - 1 - lp); ex[i] = lp; }
+  const pp = Math.max(1, Math.round(L / 7));
+  for (let i = L - 1; i >= pp; i--) ex[i] -= ex[i - pp];
+  let s1 = 0, a1 = 0, peak = 1e-9;
+  for (let i = 0; i < len; i++) {
+    const s = i > L ? 0.5 * (y[i - L] + y[i - L - 1]) : i === L ? 0.5 * y[0] : 0;
+    const a = C * s + s1 - C * a1; s1 = s; a1 = a;
+    y[i] = (i < L ? ex[i] : 0) + g * a;
+    peak = Math.max(peak, Math.abs(y[i]));
+  }
+  const fade = Math.min(len, Math.floor(sr * 0.05));
+  for (let i = 0; i < len; i++) y[i] *= (i >= len - fade ? (len - i) / fade : 1) / peak;
+  const buf = ac.createBuffer(1, len, sr); buf.copyToChannel(y, 0);
+  if (strings.size >= 96) strings.delete(strings.keys().next().value);
+  strings.set(key, buf);
+  return buf;
+}
+// small additive piano: slightly stretched partials, faster decay up high,
+// a short filtered noise burst as hammer
+function synth(c, n, f, vel, voice, dur) {
+  const t = ac.currentTime + 0.01;
+  const pan = ac.createStereoPanner(); pan.pan.value = n > 1 ? (c / (n - 1)) * 1.6 - 0.8 : 0;
+  pan.connect(bus);
+  if (voice === 'harp') {
+    // harder strikes sound brighter
+    const src = ac.createBufferSource(), lp = ac.createBiquadFilter(), g = ac.createGain();
+    src.buffer = stringBuffer(f, dur);
+    lp.type = 'lowpass'; lp.frequency.value = Math.min(f * (3 + 8 * vel), 16000); lp.Q.value = 0.5;
+    g.gain.value = 0.3 * vel;
+    src.connect(lp).connect(g).connect(pan); src.start(t);
+    return;
+  }
+  if (voice === 'bell') {
+    // one sine, 4 ms attack, random 0.35–1.25 s decay
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.frequency.value = f;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.14 * vel, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(1e-4, t + dur);
+    o.connect(g).connect(pan); o.start(t); o.stop(t + dur + 0.05);
+    return;
+  }
+  [[1, 1, 1], [2.003, 0.45, 0.6], [3.009, 0.22, 0.4], [4.02, 0.1, 0.25]].forEach(([r, a, d]) => {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.frequency.value = f * r;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.2 * vel * a, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(1e-4, t + dur * d);
+    o.connect(g).connect(pan); o.start(t); o.stop(t + dur * d + 0.05);
+  });
+  const nb = ac.createBuffer(1, ac.sampleRate * 0.03, ac.sampleRate), d = nb.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const src = ac.createBufferSource(), bp = ac.createBiquadFilter(), g = ac.createGain();
+  src.buffer = nb; bp.type = 'bandpass'; bp.frequency.value = Math.min(f * 6, 9000); bp.Q.value = 1.5;
+  g.gain.value = 0.06 * vel;
+  src.connect(bp).connect(g).connect(pan); src.start(t);
+}
+
+const btn = document.getElementById('btn-audio');
+btn.onclick = async () => {
+  const fresh = !ac;
+  if (fresh) initAudio();
+  if (ac.state === 'running' && !fresh) { await ac.suspend(); midiPanic(); btn.textContent = 'Start sound'; btn.classList.remove('playing'); }
+  else { await ac.resume(); btn.textContent = 'Pause sound'; btn.classList.add('playing'); }
+};
+document.getElementById('verb').onchange = applyVerb;
+document.getElementById('delay').onchange = applyDelay;
+
+const OCT_MIN = -3, OCT_MAX = 2;
+function setOct(o) {
+  S.oct = clamp(o, OCT_MIN, OCT_MAX);
+  document.getElementById('oct-val').textContent = (S.oct > 0 ? '+' : '') + S.oct;
+  document.getElementById('oct-down').disabled = S.oct <= OCT_MIN;
+  document.getElementById('oct-up').disabled = S.oct >= OCT_MAX;
+}
+document.getElementById('oct-down').onclick = () => setOct(S.oct - 1);
+document.getElementById('oct-up').onclick = () => setOct(S.oct + 1);
+setOct(S.oct);
+
+/* ---------------------------------------------------------------- midi */
+
+// Web MIDI needs a secure context (https or localhost). Every strike becomes a
+// note-on with the scale note's MIDI number; the note-off follows after the
+// voice's decay (piano and harp capped at 2 s). A retrigger of a held note ends it first.
+let midi = null, midiOut = null;
+const held = new Map();               // note -> { port, ch, note, id }
+const midiCh = () => +document.getElementById('midi-ch').value;
+const noteOff = h => { try { h.port.send([0x80 | h.ch, h.note, 0]); } catch (e) { /* port gone */ } };
+function midiNote(f, vel, dur) {
+  if (!midiOut || document.getElementById('midi-cfg').hidden) return;
+  const note = clamp(Math.round(69 + 12 * Math.log2(f / 440)), 0, 127);
+  const v = clamp(Math.round(vel / 1.3 * 127), 1, 127);
+  if (held.has(note)) { clearTimeout(held.get(note).id); noteOff(held.get(note)); }
+  const h = { port: midiOut, ch: midiCh(), note };
+  h.port.send([0x90 | h.ch, note, v], performance.now() + 10);
+  h.id = setTimeout(() => { held.delete(note); noteOff(h); }, 10 + dur * 1000);
+  held.set(note, h);
+}
+function midiPanic() {
+  for (const h of held.values()) { clearTimeout(h.id); noteOff(h); }
+  held.clear();
+}
+function listPorts() {
+  const sel = document.getElementById('midi-port'), cur = sel.value;
+  sel.replaceChildren(new Option('no output', ''));
+  for (const o of midi.outputs.values()) sel.add(new Option(o.name, o.id));
+  sel.value = midi.outputs.has(cur) ? cur : '';
+  if (sel.value !== cur) sel.onchange({ target: sel });
+}
+const midiBtn = document.getElementById('btn-midi');
+if (!navigator.requestMIDIAccess) { midiBtn.disabled = true; midiBtn.title = 'Web MIDI is not supported in this browser'; }
+midiBtn.onclick = async () => {
+  const cfg = document.getElementById('midi-cfg');
+  // the button toggles MIDI out as a whole; hidden settings send nothing
+  if (midi) { cfg.hidden = !cfg.hidden; midiBtn.classList.toggle('on', !cfg.hidden); midiPanic(); return; }
+  try { midi = await navigator.requestMIDIAccess(); }
+  catch (e) { midiBtn.title = 'MIDI access denied'; midiBtn.disabled = true; return; }
+  const ch = document.getElementById('midi-ch');
+  for (let i = 0; i < 16; i++) ch.add(new Option(i + 1, i));
+  ch.onchange = midiPanic;
+  document.getElementById('midi-port').onchange = e => {
+    midiPanic();
+    midiOut = e.target.value ? midi.outputs.get(e.target.value) : null;
+  };
+  midi.onstatechange = listPorts;
+  listPorts();
+  cfg.hidden = false; midiBtn.classList.add('on');
+};
+const about = document.getElementById('about');
+document.getElementById('btn-about').onclick = () => about.showModal();
+about.addEventListener('close', () => {
+  try { localStorage.setItem('np-about-seen', '1'); } catch (e) { /* storage blocked */ }
+  if (about.returnValue === 'start' && !btn.classList.contains('playing')) btn.click();
+});
+let seen = false;
+try { seen = localStorage.getItem('np-about-seen') === '1'; } catch (e) { /* storage blocked */ }
+if (!seen) about.showModal();
+
+document.getElementById('vol').oninput = e => out && out.gain.setTargetAtTime(+e.target.value, ac.currentTime, 0.05);
+
+/* ---------------------------------------------------------------- transport */
+
+const playRow = () => S.mode === 'live' ? Math.max(S.last, 0) : clamp((S.t - S.t0) / MIN, 0, N - 1);
+function setLive(live, t) {
+  S.mode = live ? 'live' : 'replay';
+  if (t != null) S.t = t;
+  document.getElementById('btn-live').classList.toggle('on', live);
+}
+document.getElementById('btn-live').onclick = () => setLive(true);
+
+// Poisson scheduler on a timer rather than rAF, so it keeps playing when the
+// page is not repainting
+let lastTick = performance.now();
+setInterval(() => {
+  const now = performance.now(), dt = Math.min(0.25, (now - lastTick) / 1000); lastTick = now;
+  if (S.mode === 'replay') {
+    S.t += S.speed * MIN * dt;
+    if (S.t >= S.t0 + S.last * MIN) setLive(true);
+  }
+  if (!ac || ac.state !== 'running' || !S.stations.length) return;
+  const f = playRow(), n = S.stations.length;
+  const dens = +document.getElementById('density').value, k = +document.getElementById('sens').value;
+  for (let c = 0; c < n; c++) {
+    const d = at(S.dev[c], Math.min(f, S.last));
+    if (!Number.isFinite(d)) continue;
+    const rate = 0.35 * dens * Math.exp(clamp(d, -8, 8) * k);
+    if (Math.random() < rate * dt) {
+      const vel = clamp((0.45 + 0.55 * Math.random()) * (1 + d / 4), 0.15, 1.3);
+      strike(c, n, vel);
+      S.hits[c] = { t: now, v: vel };
+    }
+  }
+}, 20);
+
+/* ---------------------------------------------------------------- render */
+
+const cv = document.getElementById('cv'), cx = cv.getContext('2d'), info = document.getElementById('info');
+let L = null;
+function resize() {
+  const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const keyH = clamp(r.height * 0.42, 140, 320);
+  L = { w: r.width, h: r.height, x: 16, kw: r.width - 32, top: 14, keyH, wfTop: 14 + keyH + 34, wfH: r.height - keyH - 34 - 14 - 36 };
+}
+addEventListener('resize', resize);
+
+function draw(now) {
+  cx.fillStyle = '#07080b'; cx.fillRect(0, 0, L.w, L.h);
+  const n = S.stations.length;
+  if (n) {
+    const cw = L.kw / n, f = playRow();
+    for (let c = 0; c < n; c++) {
+      const d = at(S.dev[c], Math.min(f, S.last));
+      const hit = S.hits[c] || { t: -1e9, v: 0 };
+      const glow = clamp(1 - (now - hit.t) / 700, 0, 1) * Math.min(1, hit.v);
+      const press = glow * 6, x = L.x + c * cw + 2, w = cw - 4;
+      // key body: tint by deviation, flash on strike
+      const [r, g, b] = devColor(d);
+      cx.fillStyle = `rgb(${Math.round(r * 0.55 + 18)},${Math.round(g * 0.55 + 20)},${Math.round(b * 0.55 + 26)})`;
+      cx.fillRect(x, L.top + press, w, L.keyH - press);
+      if (glow > 0) {
+        cx.fillStyle = `rgba(255,214,140,${0.85 * glow})`;
+        cx.fillRect(x, L.top + press, w, L.keyH - press);
+      }
+      cx.fillStyle = 'rgba(0,0,0,.35)'; cx.fillRect(x, L.top + L.keyH - 6, w, 6);
+      // deviation needle
+      if (Number.isFinite(d)) {
+        const y = L.top + L.keyH / 2 - clamp(d / 2, -1, 1) * (L.keyH / 2 - 10);
+        cx.fillStyle = '#c9cfdc'; cx.fillRect(x + 3, y - 1, w - 6, 2);
+      }
+      cx.save(); cx.translate(x + w / 2 + 3, L.top + L.keyH - 12); cx.rotate(-Math.PI / 2);
+      cx.font = '10px ui-monospace, monospace'; cx.textAlign = 'left';
+      cx.fillStyle = glow > 0.3 ? '#07080b' : '#c9cfdc'; cx.fillText(S.stations[c], 0, 0);
+      cx.restore();
+      cx.fillStyle = '#6c748a'; cx.font = '9px ui-monospace, monospace'; cx.textAlign = 'center';
+      if (cw > 26 || c % 2 === 0) cx.fillText((RC[S.stations[c]] ?? '?') + '', x + w / 2, L.top + L.keyH + 13);
+    }
+    cx.fillStyle = '#6c748a'; cx.font = '10px ui-monospace, monospace';
+    cx.textAlign = 'left'; cx.fillText('Rc [GV]  polar · low', L.x, L.top + L.keyH + 27);
+    cx.textAlign = 'right'; cx.fillText('equatorial · high', L.x + L.kw, L.top + L.keyH + 27);
+
+    // 24 h waterfall underneath, newest on top, playhead marked
+    if (S.img && L.wfH > 40) {
+      cx.imageSmoothingEnabled = false;
+      cx.drawImage(S.img, 0, 0, n, N, L.x, L.wfTop, L.kw, L.wfH);
+      cx.font = '10px ui-monospace, monospace'; cx.textAlign = 'left';
+      for (let h = Math.ceil(S.t0 / 3600_000) * 3600_000; h < S.t0 + N * MIN; h += 3600_000) {
+        if (new Date(h).getUTCHours() % 3) continue;
+        const y = L.wfTop + (N - 1 - (h - S.t0) / MIN) / N * L.wfH;
+        cx.fillStyle = 'rgba(201,207,220,.1)'; cx.fillRect(L.x, y, L.kw, 1);
+        cx.fillStyle = '#6c748a'; cx.fillText(String(new Date(h).getUTCHours()).padStart(2, '0') + 'Z', L.x + 4, y - 3);
+      }
+      const py = L.wfTop + (N - 1 - f) / N * L.wfH;
+      cx.fillStyle = S.mode === 'live' ? '#59d98e' : '#ffb347';
+      cx.fillRect(L.x, py - 0.5, L.kw, 1.5);
+    }
+    const ok = S.dev.map(d => at(d, Math.min(f, S.last))).filter(Number.isFinite);
+    const mean = ok.reduce((a, b) => a + b, 0) / (ok.length || 1);
+    info.textContent = `${S.mode === 'live' ? 'LIVE' : 'REPLAY'}  ${new Date(S.t0 + f * MIN).toISOString().slice(0, 16).replace('T', ' ')}Z   Ø ${mean >= 0 ? '+' : ''}${mean.toFixed(2)} %   ·   click the history = replay`;
+  }
+  requestAnimationFrame(draw);
+}
+
+function scrub(e) {
+  if (!L || e.offsetY < L.wfTop) return;
+  const f = clamp(N - 1 - (e.offsetY - L.wfTop) / L.wfH * N, 0, N - 1);
+  setLive(false, S.t0 + f * MIN);
+}
+let dragging = false;
+cv.addEventListener('pointerdown', e => { dragging = true; cv.setPointerCapture(e.pointerId); scrub(e); });
+cv.addEventListener('pointermove', e => dragging && scrub(e));
+cv.addEventListener('pointerup', () => dragging = false);
+
+resize();
+refresh().then(() => requestAnimationFrame(draw));
+setInterval(refresh, POLL);
+</script>
+</body>
+</html>
