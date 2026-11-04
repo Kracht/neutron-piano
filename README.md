@@ -37,8 +37,8 @@ A proxy is needed because NMDB sends no CORS headers and returns its data as an 
 | Data | NMDB real-time 1-min counts, revised where available, otherwise original, corrected for pressure and efficiency, last 24 h, refreshed every minute |
 | Smoothing | 15-min trailing mean per station |
 | Deviation `d` | Smoothed rate vs. the station's own 24-h median, in % (colour scale ±2 %) |
-| Strike rate | `λ = 0.35 s⁻¹ · density · exp(k · d)`, `k` = sensitivity (default 0.4), `d` clamped to ±8 %, sampled as a Poisson process every 20 ms |
-| Velocity | random 0.45–1.0 × `(1 + d/4)` |
+| Strike rate | `λ = 0.35 s⁻¹ · density · exp(k · d)`, `k` = sensitivity (default 0.4), `d` clamped to ±8 %, sampled as a Poisson process every 20 ms, at least 180 ms between two strikes of one key |
+| Velocity | random 0.45–1.0 × `(1 + d/4)`, at most 1 |
 | Pitch | rank by cutoff rigidity, mapped to scale steps; default A minor pentatonic over three octaves, shifted one octave down |
 
 Because the baseline is a running 24-h median, the piano plays departures from the past day, not absolute flux. Slow trends such as the solar cycle drop out, and Forbush decreases lasting longer than about half a day are partly absorbed into the baseline.
