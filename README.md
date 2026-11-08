@@ -9,9 +9,9 @@
 - Live 1-minute data from the [Neutron Monitor Database (NMDB)](https://www.nmdb.eu)
 - Keys ordered by geomagnetic cutoff rigidity: polar stations play low notes, equatorial stations play high notes
 - 24-hour waterfall with click-to-replay
-- Piano, harp and bell voices, scales, octave shift, reverb, delay
+- Sampled grand piano (Salamander, Yamaha C5), upright piano, glockenspiel and vibraphone; scales, octave shift, reverb, delay
 - MIDI out via Web MIDI, to drive any synth or DAW
-- A single HTML file plus a ~100-line proxy, with no build step and no dependencies
+- A single HTML file, a small proxy and a folder of samples, with no build step and no dependencies
 
 An in-page **About** overlay explains everything for visitors, including a section with the details for the detector community.
 
@@ -26,9 +26,9 @@ python3 serve.py            # http://localhost:8765/
 
 ## Deploy
 
-Any PHP web host works: upload `index.html` and `nmdb.php`.
+Any PHP web host works: upload `index.html`, `nmdb.php` and the `samples/` folder.
 
-A proxy is needed because NMDB sends no CORS headers and returns its data as an HTML-wrapped table. `nmdb.php` (and `serve.py`, which answers the same `/nmdb.php` route) fetch NMDB server-side, parse the table to JSON and cache it for 55 s. The upstream URL is fixed and the only parameter is `days` (clamped to 1–7), so neither is an open proxy. `nmdb.php` uses curl if available, otherwise `allow_url_fopen`.
+A proxy is needed because NMDB sends no CORS headers and returns its data as an HTML-wrapped table. `nmdb.php` (and `serve.py`, which answers the same `/nmdb.php` route) fetch NMDB server-side, parse the table to JSON and cache it for 55 s. NEST runs at Kiel University and, as a mirror, at the Paris Observatory (`previ.obspm.fr/nest`). The proxy asks the source that answered last first; while Kiel is down it uses Paris and tries Kiel again every 30 minutes. If neither answers, cached data are served for up to 30 minutes, then the page reports the outage. On the first visit, a short loading animation covers the up to 10 s connect timeout for Kiel. The upstream URLs are fixed and the only parameter is `days` (clamped to 1–7), so neither is an open proxy. `nmdb.php` uses curl if available, otherwise `allow_url_fopen`.
 
 ## How it works
 
@@ -48,7 +48,7 @@ Because the baseline is a running 24-h median, the piano plays departures from t
 | Control | Function |
 |---|---|
 | Scale | A minor pentatonic over 3 octaves (default), or minor/major pentatonic, Hirajoshi, whole tone, major over 25 steps |
-| Voice | Piano (additive), Harp (Karplus-Strong plucked string), Bell (sine) |
+| Voice | Grand piano, upright piano, glockenspiel, vibraphone (samples, loaded on first use, up to 1 MB each) |
 | Octave − / + | −3 to +2, default −1 |
 | Density, Sensitivity, Volume | Note count, response to deviations, level |
 | Reverb | off, subtle, wide |
@@ -58,9 +58,23 @@ Because the baseline is a running 24-h median, the piano plays departures from t
 
 ### MIDI out
 
-Every strike sends a note-on with the scale note's MIDI number (octave shift included) and a velocity from the strike strength. The note-off follows after the voice's decay; for piano and harp it comes after 2 s at most. Pausing, switching port or channel, or turning MIDI off releases all held notes.
+Every strike sends a note-on with the scale note's MIDI number (octave shift included) and a velocity from the strike strength. The note-off follows after at most 2 s. Pausing, switching port or channel, or turning MIDI off releases all held notes.
 
 Web MIDI needs a secure context (https or `localhost`) and a supporting browser: Chromium-based browsers, or Firefox, which asks for permission. Safari does not support it.
+
+## Samples
+
+| Folder | Source | License |
+|---|---|---|
+| `samples/grand` | [Salamander Grand Piano V3](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html) by Alexander Holm (Yamaha C5), SF2 edition by FreePats | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| `samples/upright` | [Upright Piano KW](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html#UprightKW), FreePats | CC0 |
+| `samples/glock`, `samples/vibes` | [Versilian Community Sample Library](https://github.com/sgossner/VCSL) | CC0 |
+
+Mono MP3, two velocity layers, piano every minor third from A0 to C8. `tools/build-samples.py` rebuilds them from the original banks (fluidsynth, ffmpeg, numpy). The page plays the nearest recording, resampled by at most a few semitones.
+
+## Performance
+
+Audio runs with `latencyHint: 'playback'` (larger buffer, no dropouts on slow machines), only the selected reverb is fed, and each note is three Web Audio nodes. The canvas caches everything that changes at most once a minute in offscreen layers and draws at most 30 frames per second.
 
 ## Limits
 

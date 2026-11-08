@@ -51,6 +51,28 @@ dialog#about::backdrop { background: rgba(4, 5, 8, .78); }
 .about-body td:first-child { white-space: nowrap; color: var(--ink); }
 .sw { display: inline-block; width: 10px; height: 10px; vertical-align: -1px; margin: 0 2px; }
 .about-foot { display: flex; gap: 10px; justify-content: flex-end; padding-top: 22px; }
+
+/* Shown only while NMDB cannot be reached and no data has loaded yet. */
+#outage { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(4, 5, 8, .82); z-index: 1; }
+#outage[hidden] { display: none; }
+#outage div { max-width: 560px; padding: 20px 24px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid #ff5d5d; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #b4bccb; }
+#outage b { display: block; margin-bottom: 8px; font: 700 11px/1.3 var(--font); letter-spacing: .25em; color: #ff5d5d; }
+#outage a { color: var(--accent); }
+
+/* First load: the proxy may wait up to 10 s for Kiel before it asks the Paris
+ * mirror. Particles rain onto 25 keys, each key flashes when one lands. */
+#loading { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 22px; background: var(--bg); z-index: 1; transition: opacity .6s; }
+#loading.done { opacity: 0; pointer-events: none; }
+#loading[hidden] { display: none; }
+.rain { display: flex; gap: 6px; height: 120px; align-items: flex-end; }
+.rain i { position: relative; width: 10px; height: 46px; background: #151925; animation: key 2.4s var(--d) infinite; }
+.rain i::before { content: ""; position: absolute; left: 4px; top: -74px; width: 2px; height: 8px; border-radius: 1px; background: var(--accent); opacity: 0; animation: fall 2.4s var(--d) infinite ease-in; }
+@keyframes fall { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: .9; } 30% { transform: translateY(70px); opacity: .9; } 31%, 100% { transform: translateY(70px); opacity: 0; } }
+@keyframes key { 0%, 29% { background: #151925; } 31% { background: #ffd68c; } 55%, 100% { background: #151925; } }
+#loading p { margin: 0; max-width: 460px; padding: 0 16px; text-align: center; color: var(--dim); }
+#loading .slow { opacity: 0; transition: opacity .8s; font: 13px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+#loading.slow .slow { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .rain i, .rain i::before { animation: none; } }
 </style>
 </head>
 <body>
@@ -70,9 +92,10 @@ dialog#about::backdrop { background: rgba(4, 5, 8, .78); }
   </label>
   <label>Voice
     <select id="voice">
-      <option value="piano" selected>Piano</option>
-      <option value="harp">Harp</option>
-      <option value="bell">Bell</option>
+      <option value="grand" selected>Grand piano</option>
+      <option value="upright">Upright piano</option>
+      <option value="glock">Glockenspiel</option>
+      <option value="vibes">Vibraphone</option>
     </select>
   </label>
   <span class="oct"><label>Octave</label>
@@ -130,7 +153,7 @@ dialog#about::backdrop { background: rgba(4, 5, 8, .78); }
     <h2>Controls</h2>
     <table>
       <tr><td>Scale</td><td>Which notes the keys play. The default spreads A minor pentatonic over three octaves, so neighbouring stations sometimes share a note. The other scales give every station its own step.</td></tr>
-      <tr><td>Voice</td><td>Piano, a plucked harp, or a soft bell.</td></tr>
+      <tr><td>Voice</td><td>Recorded instruments: a Yamaha C5 grand, an upright piano, a glockenspiel and a vibraphone with soft mallets. Each loads up to 1 MB of samples the first time it plays. Glockenspiel and vibraphone have a smaller range than the piano, so notes outside it move into it by whole octaves.</td></tr>
       <tr><td>Octave − / +</td><td>Moves everything down or up by an octave.</td></tr>
       <tr><td>Density</td><td>How many notes there are overall.</td></tr>
       <tr><td>Sensitivity</td><td>How strongly small changes in the counts change the number of notes. Turned to zero, every station plays at the same rate.</td></tr>
@@ -155,6 +178,7 @@ dialog#about::backdrop { background: rgba(4, 5, 8, .78); }
 
     <h2>Acknowledgements</h2>
     <p>We acknowledge the NMDB database (<a href="https://www.nmdb.eu" target="_blank" rel="noopener">www.nmdb.eu</a>), founded under the European Union's FP7 programme (contract no. 213007), for providing data. The data of each neutron monitor are provided by the institute that operates it.</p>
+    <p>Instrument samples: <a href="https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html" target="_blank" rel="noopener">Salamander Grand Piano</a> by Alexander Holm (<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>, SF2 edition by FreePats), <a href="https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html#UprightKW" target="_blank" rel="noopener">Upright Piano KW</a> (FreePats, CC0), glockenspiel and vibraphone from the <a href="https://github.com/sgossner/VCSL" target="_blank" rel="noopener">Versilian Community Sample Library</a> (CC0). Shortened, converted to mono and compressed for the web.</p>
 
     <form method="dialog" class="about-foot">
       <button value="close">Close</button>
@@ -166,6 +190,16 @@ dialog#about::backdrop { background: rgba(4, 5, 8, .78); }
 <section id="stage">
   <canvas id="cv"></canvas>
   <div id="info"></div>
+  <div id="loading" role="status">
+    <div class="rain" aria-hidden="true"></div>
+    <p>Fetching the last 24 hours from NMDB …</p>
+    <p class="slow">NMDB's main server in Kiel is not answering at the moment, so the page asks the mirror at the Paris Observatory instead. This takes about ten seconds.</p>
+  </div>
+  <div id="outage" hidden role="status"><div>
+    <b>NMDB UNAVAILABLE</b>
+    Neither NMDB's main server in Kiel nor its mirror in Paris answers right now. After the PHP2shell attacks, Kiel University restricted access to its web services, NMDB among them. Neutron Piano has no data to play until one of them is back. This page keeps trying every minute.
+    <br><a href="https://nmdb.eu" target="_blank" rel="noopener">Status at nmdb.eu</a>
+  </div></div>
 </section>
 
 <script>
@@ -184,7 +218,7 @@ const RC = {
   KIEL2: 2.36, NEWK: 2.4, DRBS: 3.18, IRKT: 3.64, LMKS: 3.84, JUNG1: 4.49,
   BKSN: 5.7, ROME: 6.27, AATB: 6.69, CALM: 6.95, MXCO: 8.28, ATHN: 8.53,
 };
-const S = { t0: 0, stations: [], dev: [], last: -1, img: null, hits: [], mode: 'live', t: 0, speed: 15, oct: -1 };
+const S = { t0: 0, source: '', stations: [], dev: [], last: -1, img: null, hits: [], mode: 'live', t: 0, speed: 15, oct: -1 };
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const nan = () => new Float32Array(N).fill(NaN);
 
@@ -211,29 +245,40 @@ function at(a, f) {
   return NaN;
 }
 
+// Live data come from nmdb.php, which asks NEST in Kiel and, if Kiel does
+// not answer, the mirror in Paris.
+function load(j, t0) {
+  S.t0 = t0; S.source = j.source;
+  const cols = j.stations.map((s, k) => ({ s, k })).sort((a, b) => (RC[a.s] ?? 99) - (RC[b.s] ?? 99));
+  const data = cols.map(nan);
+  for (const row of j.rows) {
+    const i = Math.round((Date.parse(row[0]) - S.t0) / MIN);
+    if (i < 0 || i >= N) continue;
+    cols.forEach(({ k }, c) => { const x = row[k + 1]; if (x != null) data[c][i] = x; });
+  }
+  S.dev = data.map(a => { const sm = smooth(a, 15), m = median(sm); return sm.map(x => (x / m - 1) * 100); });
+  if (S.stations.join() !== cols.map(c => c.s).join()) S.hits = cols.map(() => ({ t: -1e9, v: 0 }));
+  S.stations = cols.map(c => c.s);
+  S.last = Math.max(...S.dev.map(lastValid));
+  paintWaterfall(); paintStatic(); preload();
+}
+async function getJSON(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
 async function refresh() {
-  const feed = document.getElementById('feed');
+  const feed = document.getElementById('feed'), outage = document.getElementById('outage');
   try {
-    const r = await fetch('nmdb.php?days=1', { cache: 'no-store' });
-    if (!r.ok) throw new Error(r.status);
-    const j = await r.json();
-    S.t0 = Math.floor(Date.now() / MIN) * MIN - (N - 1) * MIN;
-    const cols = j.stations.map((s, k) => ({ s, k })).sort((a, b) => (RC[a.s] ?? 99) - (RC[b.s] ?? 99));
-    const data = cols.map(nan);
-    for (const row of j.rows) {
-      const i = Math.round((Date.parse(row[0]) - S.t0) / MIN);
-      if (i < 0 || i >= N) continue;
-      cols.forEach(({ k }, c) => { const x = row[k + 1]; if (x != null) data[c][i] = x; });
-    }
-    S.dev = data.map(a => { const sm = smooth(a, 15), m = median(sm); return sm.map(x => (x / m - 1) * 100); });
-    if (S.stations.join() !== cols.map(c => c.s).join()) S.hits = cols.map(() => ({ t: -1e9, v: 0 }));
-    S.stations = cols.map(c => c.s);
-    S.last = Math.max(...S.dev.map(lastValid));
-    paintWaterfall();
+    load(await getJSON('nmdb.php?days=1'), Math.floor(Date.now() / MIN) * MIN - (N - 1) * MIN);
     const age = Math.round((Date.now() - (S.t0 + S.last * MIN)) / MIN);
-    feed.className = age < 20 ? 'ok' : 'stale'; feed.textContent = `NMDB ${age} min old`;
+    feed.className = age < 20 ? 'ok' : 'stale';
+    feed.textContent = `NMDB${S.source && S.source !== 'Kiel' ? ' via ' + S.source : ''} · ${age} min old`;
+    feed.title = S.source === 'Paris' ? 'Data from the NEST mirror at the Paris Observatory, while the main server in Kiel is unreachable' : '';
+    outage.hidden = true;
   } catch (e) {
     feed.className = 'err'; feed.textContent = 'NMDB error';
+    if (!S.stations.length) outage.hidden = false;
   }
 }
 
@@ -262,11 +307,13 @@ function paintWaterfall() {
 
 /* ---------------------------------------------------------------- audio */
 
-let ac = null, bus = null, out = null, wets = null, dly = null;
+let ac = null, bus = null, out = null, verbIn = null, wets = null, dly = null;
 // room: subtle, short; hall: long tail
 const VERBS = { room: { sec: 2.4, decay: 4, wet: 0.18 }, hall: { sec: 4.5, decay: 3.2, wet: 0.55 } };
 function initAudio() {
-  ac = new AudioContext();
+  // 'playback' asks for a larger hardware buffer: a few tens of ms more latency
+  // do not matter for a sonification, but dropouts (crackling) on slow machines do
+  ac = new AudioContext({ latencyHint: 'playback' });
   out = ac.createGain(); out.gain.value = +document.getElementById('vol').value;
   // makeup gain after a gentle compressor keeps chords from clipping
   const comp = ac.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 3; comp.knee.value = 12;
@@ -274,9 +321,9 @@ function initAudio() {
   // limiter last: a station far above its median can still push peaks past full scale
   const lim = ac.createDynamicsCompressor(); lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.002; lim.release.value = 0.1;
   out.connect(comp).connect(makeup).connect(lim).connect(ac.destination);
-  // voices -> bus -> out (dry); bus -> delay -> out; bus + delay -> reverbs -> out
+  // voices -> bus -> out (dry); bus -> delay -> out; bus + delay -> reverb -> out
   bus = ac.createGain(); bus.connect(out);
-  const verbIn = ac.createGain(); bus.connect(verbIn);
+  verbIn = ac.createGain(); bus.connect(verbIn);
   dly = { in: ac.createGain(), node: ac.createDelay(2), fb: ac.createGain(), lp: ac.createBiquadFilter(), wet: ac.createGain() };
   // the loop must start open: at the default feedback of 1 and the minimum delay
   // of 128 samples, the resonance of the low-pass pushes its gain above 1, so the
@@ -294,15 +341,27 @@ function initAudio() {
       for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, v.decay);
     }
     const g = ac.createGain(); g.gain.value = 0;
-    verbIn.connect(verb).connect(g).connect(out);
-    wets[name] = g;
+    verb.connect(g).connect(out);
+    wets[name] = { verb, g, on: false, timer: 0 };
   }
   applyVerb(); applyDelay();
 }
+// A convolver costs CPU as long as it has input, even behind a gain of 0, and
+// a 4.5 s stereo impulse is the most expensive node here. So only the selected
+// reverb is fed; the other one is cut off once its fade-out is done.
 function applyVerb() {
   if (!wets) return;
   const sel = document.getElementById('verb').value;
-  for (const [name, g] of Object.entries(wets)) g.gain.setTargetAtTime(name === sel ? VERBS[name].wet : 0, ac.currentTime, 0.1);
+  for (const [name, w] of Object.entries(wets)) {
+    clearTimeout(w.timer);
+    if (name === sel) {
+      if (!w.on) { verbIn.connect(w.verb); w.on = true; }
+      w.g.gain.setTargetAtTime(VERBS[name].wet, ac.currentTime, 0.1);
+    } else if (w.on) {
+      w.g.gain.setTargetAtTime(0, ac.currentTime, 0.1);
+      w.timer = setTimeout(() => { verbIn.disconnect(w.verb); w.on = false; }, 800);
+    }
+  }
 }
 
 // simple feedback delay; switching off only closes the input so the tail rings out
@@ -331,96 +390,92 @@ function baseFreq(c, n) {
   return base * Math.pow(2, oct + deg / 12);
 }
 
-function strike(c, n, vel) {
-  const f = freqOf(c, n), voice = document.getElementById('voice').value;
-  const dur = voice === 'bell' ? 0.35 + Math.random() * 0.9
-    : voice === 'harp' ? clamp(7 - Math.log2(f / 110) * 1.2, 1.5, 7)
-    : clamp(5.5 - Math.log2(f / 110) * 0.9, 1.2, 5.5);
-  midiNote(f, vel, voice === 'bell' ? dur : Math.min(dur, 2));
-  if (document.getElementById('synth').checked) synth(c, n, f, vel, voice, dur);
+/* Sampled instruments. Each zone is one recording (MIDI note n, layer a = soft,
+ * b = hard, both normalised, b 6 dB above a); a note plays the nearest zone,
+ * resampled by at most a few semitones. `shift` moves the scale into the
+ * instrument's register, notes outside lo..hi move in by whole octaves. */
+const VOICES = {
+  grand:   { shift: 0,  lo: 21, hi: 108, gain: 0.55 },
+  upright: { shift: 0,  lo: 21, hi: 108, gain: 0.55 },
+  glock:   { shift: 36, lo: 67, hi: 110, gain: 0.32 },
+  vibes:   { shift: 24, lo: 50, hi: 91,  gain: 0.5 },
+};
+const MAX_VOICES = 40;
+let manifest = null;
+const buffers = new Map();     // url -> AudioBuffer | Promise
+const sounding = [];           // { src, g, c, end }
+const loadManifest = () => manifest ??= fetch('samples/manifest.json').then(r => r.json()).then(m => manifest = m);
+
+function zoneFor(voice, f) {
+  const v = VOICES[voice], zones = manifest?.[voice]?.zones;
+  if (!zones) return null;
+  let m = 69 + 12 * Math.log2(f / 440) + v.shift;
+  while (m < v.lo) m += 12;
+  while (m > v.hi) m -= 12;
+  let best = zones[0];
+  for (const z of zones) if (Math.abs(z.n - m) < Math.abs(best.n - m)) best = z;
+  return { m, n: best.n, tune: best.t };
+}
+const sampleUrl = (voice, n, layer) => `samples/${voice}/${n}${layer}.mp3`;
+function fetchSample(url) {
+  if (!buffers.has(url)) buffers.set(url, fetch(url).then(r => r.arrayBuffer()).then(a => ac.decodeAudioData(a))
+    .then(b => (buffers.set(url, b), b), () => buffers.delete(url)));
+  return buffers.get(url);
+}
+// fetch both layers of every zone the current voice, scale and octave can reach
+async function preload() {
+  if (!ac || !S.stations.length) return;
+  await loadManifest();
+  const voice = document.getElementById('voice').value, n = S.stations.length, need = new Set();
+  for (let c = 0; c < n; c++) {
+    const z = zoneFor(voice, freqOf(c, n));
+    if (z) for (const l of 'ab') need.add(sampleUrl(voice, z.n, l));
+  }
+  await Promise.all([...need].map(fetchSample));
 }
 
-// Karplus-Strong string, rendered once per pitch into a buffer: a DelayNode
-// loop cannot go below one render quantum (128 samples), which caps its pitch
-// near 375 Hz. Two-point average in the loop damps the highs, a first-order
-// allpass supplies the fractional part of the period so the string is in tune.
-const strings = new Map();
-function stringBuffer(f, dur) {
-  const key = `${f.toFixed(3)}/${Math.random() * 3 | 0}`;   // three takes per pitch
-  if (strings.has(key)) return strings.get(key);
-  const sr = ac.sampleRate, len = Math.floor(sr * dur), y = new Float32Array(len);
-  const P = sr / f, L = Math.max(2, Math.floor(P - 0.5)), fr = P - 0.5 - L, C = (1 - fr) / (1 + fr);
-  const g = Math.pow(10, -3 / (f * dur));                  // about -60 dB after dur
-  // excitation: one period of softened noise, plucked a seventh along the string
-  const ex = new Float32Array(L); let lp = 0;
-  for (let i = 0; i < L; i++) { lp += 0.6 * (Math.random() * 2 - 1 - lp); ex[i] = lp; }
-  const pp = Math.max(1, Math.round(L / 7));
-  for (let i = L - 1; i >= pp; i--) ex[i] -= ex[i - pp];
-  let s1 = 0, a1 = 0, peak = 1e-9;
-  for (let i = 0; i < len; i++) {
-    const s = i > L ? 0.5 * (y[i - L] + y[i - L - 1]) : i === L ? 0.5 * y[0] : 0;
-    const a = C * s + s1 - C * a1; s1 = s; a1 = a;
-    y[i] = (i < L ? ex[i] : 0) + g * a;
-    peak = Math.max(peak, Math.abs(y[i]));
-  }
-  const fade = Math.min(len, Math.floor(sr * 0.05));
-  for (let i = 0; i < len; i++) y[i] *= (i >= len - fade ? (len - i) / fade : 1) / peak;
-  const buf = ac.createBuffer(1, len, sr); buf.copyToChannel(y, 0);
-  if (strings.size >= 96) strings.delete(strings.keys().next().value);
-  strings.set(key, buf);
-  return buf;
+function strike(c, n, vel) {
+  const f = freqOf(c, n);
+  // MIDI receives the scale note itself; the note-off follows after at most 2 s
+  midiNote(f, vel, clamp(5.5 - Math.log2(f / 110) * 0.9, 1.2, 2));
+  if (document.getElementById('synth').checked) play(c, n, f, vel);
 }
-// small additive piano: slightly stretched partials, faster decay up high,
-// a soft low-passed noise thump as felt hammer (fades in over 2 ms, so it
-// does not click, and stays below 2.5 kHz, so it does not hiss)
-function synth(c, n, f, vel, voice, dur) {
+
+function play(c, n, f, vel) {
+  const voice = document.getElementById('voice').value, z = zoneFor(voice, f);
+  if (!z) return;
+  const buf = buffers.get(sampleUrl(voice, z.n, vel > 0.62 ? 'b' : 'a'));
+  if (!(buf instanceof AudioBuffer)) { preload(); return; }    // still loading: skip this strike
   const t = ac.currentTime + 0.01;
-  const pan = ac.createStereoPanner(); pan.pan.value = n > 1 ? (c / (n - 1)) * 1.6 - 0.8 : 0;
-  pan.connect(bus);
-  if (voice === 'harp') {
-    // harder strikes sound brighter
-    const src = ac.createBufferSource(), lp = ac.createBiquadFilter(), g = ac.createGain();
-    src.buffer = stringBuffer(f, dur);
-    lp.type = 'lowpass'; lp.frequency.value = Math.min(f * (3 + 8 * vel), 16000); lp.Q.value = 0.5;
-    g.gain.value = 0.3 * vel;
-    src.connect(lp).connect(g).connect(pan); src.start(t);
-    return;
+  // a station striking its key again damps its previous note, as a real
+  // re-struck string would; beyond MAX_VOICES the oldest note is let go
+  for (let i = sounding.length - 1; i >= 0; i--) {
+    const s = sounding[i];
+    if (s.end < t || s.c === c || sounding.length > MAX_VOICES && i === 0) {
+      if (s.end >= t) { s.g.gain.setTargetAtTime(0, t, 0.03); s.src.stop(t + 0.2); }
+      sounding.splice(i, 1);
+    }
   }
-  if (voice === 'bell') {
-    // one sine, 4 ms attack, random 0.35–1.25 s decay
-    const o = ac.createOscillator(), g = ac.createGain();
-    o.frequency.value = f;
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.14 * vel, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(1e-4, t + dur);
-    o.connect(g).connect(pan); o.start(t); o.stop(t + dur + 0.05);
-    return;
-  }
-  [[1, 1, 1], [2.003, 0.45, 0.6], [3.009, 0.22, 0.4], [4.02, 0.1, 0.25]].forEach(([r, a, d]) => {
-    const o = ac.createOscillator(), g = ac.createGain();
-    o.frequency.value = f * r;
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.2 * vel * a, t + 0.003);
-    g.gain.exponentialRampToValueAtTime(1e-4, t + dur * d);
-    o.connect(g).connect(pan); o.start(t); o.stop(t + dur * d + 0.05);
-  });
-  const sr = ac.sampleRate, nb = ac.createBuffer(1, sr * 0.025, sr), d = nb.getChannelData(0), atk = sr * 0.002;
-  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.min(1, i / atk) * Math.exp(-i / (sr * 0.006));
-  const src = ac.createBufferSource(), lp = ac.createBiquadFilter(), g = ac.createGain();
-  src.buffer = nb; lp.type = 'lowpass'; lp.frequency.value = Math.min(f * 3, 2500); lp.Q.value = 0.5;
-  g.gain.value = 0.05 * vel;
-  src.connect(lp).connect(g).connect(pan); src.start(t);
+  const src = ac.createBufferSource(), g = ac.createGain(), pan = ac.createStereoPanner();
+  src.buffer = buf;
+  src.playbackRate.value = Math.pow(2, (z.m - z.n - z.tune / 100) / 12);
+  g.gain.value = VOICES[voice].gain * Math.pow(vel, 1.5);
+  pan.pan.value = n > 1 ? (c / (n - 1)) * 1.6 - 0.8 : 0;
+  src.connect(g).connect(pan).connect(bus);
+  src.start(t);
+  sounding.push({ src, g, c, end: t + buf.duration / src.playbackRate.value });
 }
 
 const btn = document.getElementById('btn-audio');
 btn.onclick = async () => {
   const fresh = !ac;
-  if (fresh) initAudio();
+  if (fresh) { initAudio(); preload(); }
   if (ac.state === 'running' && !fresh) { await ac.suspend(); midiPanic(); btn.textContent = 'Start sound'; btn.classList.remove('playing'); }
   else { await ac.resume(); btn.textContent = 'Pause sound'; btn.classList.add('playing'); }
 };
 document.getElementById('verb').onchange = applyVerb;
 document.getElementById('delay').onchange = applyDelay;
+for (const id of ['voice', 'scale']) document.getElementById(id).addEventListener('change', preload);
 
 const OCT_MIN = -3, OCT_MAX = 2;
 function setOct(o) {
@@ -428,6 +483,7 @@ function setOct(o) {
   document.getElementById('oct-val').textContent = (S.oct > 0 ? '+' : '') + S.oct;
   document.getElementById('oct-down').disabled = S.oct <= OCT_MIN;
   document.getElementById('oct-up').disabled = S.oct >= OCT_MAX;
+  preload();
 }
 document.getElementById('oct-down').onclick = () => setOct(S.oct - 1);
 document.getElementById('oct-up').onclick = () => setOct(S.oct + 1);
@@ -437,7 +493,7 @@ setOct(S.oct);
 
 // Web MIDI needs a secure context (https or localhost). Every strike becomes a
 // note-on with the scale note's MIDI number; the note-off follows after the
-// voice's decay (piano and harp capped at 2 s). A retrigger of a held note ends it first.
+// voice's decay (capped at 2 s). A retrigger of a held note ends it first.
 let midi = null, midiOut = null;
 const held = new Map();               // note -> { port, ch, note, id }
 const midiCh = () => +document.getElementById('midi-ch').value;
@@ -531,72 +587,106 @@ setInterval(() => {
 
 /* ---------------------------------------------------------------- render */
 
+// Everything that changes at most once a minute (station labels, Rc axis,
+// waterfall with hour lines) is painted once into offscreen canvases; a frame
+// only draws the keys, the playhead and copies those layers. Text rendering
+// and full-resolution redraws at the display's refresh rate (144 Hz and more)
+// were the bulk of the page's load. Frames are capped at 30 per second.
 const cv = document.getElementById('cv'), cx = cv.getContext('2d'), info = document.getElementById('info');
-let L = null;
+const FRAME_MS = 1000 / 30;
+let L = null, base = null, labels = [], lastFrame = 0, lastInfo = '';
+function layer(w, h) {
+  const dpr = devicePixelRatio || 1, c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w * dpr)); c.height = Math.max(1, Math.round(h * dpr));
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return [c, g];
+}
 function resize() {
   const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
   cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
   cx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const keyH = clamp(r.height * 0.42, 140, 320);
   L = { w: r.width, h: r.height, x: 16, kw: r.width - 32, top: 14, keyH, wfTop: 14 + keyH + 34, wfH: r.height - keyH - 34 - 14 - 36 };
+  paintStatic();
 }
 addEventListener('resize', resize);
 
-function draw(now) {
-  cx.fillStyle = '#07080b'; cx.fillRect(0, 0, L.w, L.h);
+function paintStatic() {
   const n = S.stations.length;
-  if (n) {
-    const cw = L.kw / n, f = playRow();
-    for (let c = 0; c < n; c++) {
-      const d = at(S.dev[c], Math.min(f, S.last));
-      const hit = S.hits[c] || { t: -1e9, v: 0 };
-      const glow = clamp(1 - (now - hit.t) / 700, 0, 1) * Math.min(1, hit.v);
-      const press = glow * 6, x = L.x + c * cw + 2, w = cw - 4;
-      // key body: tint by deviation, flash on strike
-      const [r, g, b] = devColor(d);
-      cx.fillStyle = `rgb(${Math.round(r * 0.55 + 18)},${Math.round(g * 0.55 + 20)},${Math.round(b * 0.55 + 26)})`;
-      cx.fillRect(x, L.top + press, w, L.keyH - press);
-      if (glow > 0) {
-        cx.fillStyle = `rgba(255,214,140,${0.85 * glow})`;
-        cx.fillRect(x, L.top + press, w, L.keyH - press);
-      }
-      cx.fillStyle = 'rgba(0,0,0,.35)'; cx.fillRect(x, L.top + L.keyH - 6, w, 6);
-      // deviation needle
-      if (Number.isFinite(d)) {
-        const y = L.top + L.keyH / 2 - clamp(d / 2, -1, 1) * (L.keyH / 2 - 10);
-        cx.fillStyle = '#c9cfdc'; cx.fillRect(x + 3, y - 1, w - 6, 2);
-      }
-      cx.save(); cx.translate(x + w / 2 + 3, L.top + L.keyH - 12); cx.rotate(-Math.PI / 2);
-      cx.font = '10px ui-monospace, monospace'; cx.textAlign = 'left';
-      cx.fillStyle = glow > 0.3 ? '#07080b' : '#c9cfdc'; cx.fillText(S.stations[c], 0, 0);
-      cx.restore();
-      cx.fillStyle = '#6c748a'; cx.font = '9px ui-monospace, monospace'; cx.textAlign = 'center';
-      if (cw > 26 || c % 2 === 0) cx.fillText((RC[S.stations[c]] ?? '?') + '', x + w / 2, L.top + L.keyH + 13);
-    }
-    cx.fillStyle = '#6c748a'; cx.font = '10px ui-monospace, monospace';
-    cx.textAlign = 'left'; cx.fillText('Rc [GV]  polar · low', L.x, L.top + L.keyH + 27);
-    cx.textAlign = 'right'; cx.fillText('equatorial · high', L.x + L.kw, L.top + L.keyH + 27);
-
-    // 24 h waterfall underneath, newest on top, playhead marked
-    if (S.img && L.wfH > 40) {
-      cx.imageSmoothingEnabled = false;
-      cx.drawImage(S.img, 0, 0, n, N, L.x, L.wfTop, L.kw, L.wfH);
-      cx.font = '10px ui-monospace, monospace'; cx.textAlign = 'left';
-      for (let h = Math.ceil(S.t0 / 3600_000) * 3600_000; h < S.t0 + N * MIN; h += 3600_000) {
-        if (new Date(h).getUTCHours() % 3) continue;
-        const y = L.wfTop + (N - 1 - (h - S.t0) / MIN) / N * L.wfH;
-        cx.fillStyle = 'rgba(201,207,220,.1)'; cx.fillRect(L.x, y, L.kw, 1);
-        cx.fillStyle = '#6c748a'; cx.fillText(String(new Date(h).getUTCHours()).padStart(2, '0') + 'Z', L.x + 4, y - 3);
-      }
-      const py = L.wfTop + (N - 1 - f) / N * L.wfH;
-      cx.fillStyle = S.mode === 'live' ? '#59d98e' : '#ffb347';
-      cx.fillRect(L.x, py - 0.5, L.kw, 1.5);
-    }
-    const ok = S.dev.map(d => at(d, Math.min(f, S.last))).filter(Number.isFinite);
-    const mean = ok.reduce((a, b) => a + b, 0) / (ok.length || 1);
-    info.textContent = `${S.mode === 'live' ? 'LIVE' : 'REPLAY'}  ${new Date(S.t0 + f * MIN).toISOString().slice(0, 16).replace('T', ' ')}Z   Ø ${mean >= 0 ? '+' : ''}${mean.toFixed(2)} %   ·   click the history = replay`;
+  if (!L || !n) return;
+  const cw = L.kw / n, w = cw - 4;
+  let g;
+  [base, g] = layer(L.w, L.h);
+  g.fillStyle = '#07080b'; g.fillRect(0, 0, L.w, L.h);
+  g.fillStyle = '#6c748a'; g.font = '9px ui-monospace, monospace'; g.textAlign = 'center';
+  for (let c = 0; c < n; c++) {
+    const x = L.x + c * cw + 2;
+    if (cw > 26 || c % 2 === 0) g.fillText((RC[S.stations[c]] ?? '?') + '', x + w / 2, L.top + L.keyH + 13);
   }
+  g.font = '10px ui-monospace, monospace';
+  g.textAlign = 'left'; g.fillText('Rc [GV]  polar · low', L.x, L.top + L.keyH + 27);
+  g.textAlign = 'right'; g.fillText('equatorial · high', L.x + L.kw, L.top + L.keyH + 27);
+  if (S.img && L.wfH > 40) {
+    g.imageSmoothingEnabled = false;
+    g.drawImage(S.img, 0, 0, n, N, L.x, L.wfTop, L.kw, L.wfH);
+    g.textAlign = 'left';
+    for (let h = Math.ceil(S.t0 / 3600_000) * 3600_000; h < S.t0 + N * MIN; h += 3600_000) {
+      if (new Date(h).getUTCHours() % 3) continue;
+      const y = L.wfTop + (N - 1 - (h - S.t0) / MIN) / N * L.wfH;
+      g.fillStyle = 'rgba(201,207,220,.1)'; g.fillRect(L.x, y, L.kw, 1);
+      g.fillStyle = '#6c748a'; g.fillText(String(new Date(h).getUTCHours()).padStart(2, '0') + 'Z', L.x + 4, y - 3);
+    }
+  }
+  // rotated station names, light (normal) and dark (key lit up)
+  labels = S.stations.map(name => ['#c9cfdc', '#07080b'].map(col => {
+    const [c, lg] = layer(14, 60);
+    lg.translate(10, 60); lg.rotate(-Math.PI / 2);
+    lg.font = '10px ui-monospace, monospace'; lg.textAlign = 'left'; lg.fillStyle = col; lg.fillText(name, 0, 0);
+    return c;
+  }));
+}
+
+function draw(now) {
   requestAnimationFrame(draw);
+  if (now - lastFrame < FRAME_MS - 2) return;
+  lastFrame = now;
+  const n = S.stations.length;
+  if (!n || !base) return;
+  cx.drawImage(base, 0, 0, L.w, L.h);
+  const cw = L.kw / n, f = playRow();
+  let sum = 0, cnt = 0;
+  for (let c = 0; c < n; c++) {
+    const d = at(S.dev[c], Math.min(f, S.last));
+    if (Number.isFinite(d)) { sum += d; cnt++; }
+    const hit = S.hits[c] || { t: -1e9, v: 0 };
+    const glow = clamp(1 - (now - hit.t) / 700, 0, 1) * Math.min(1, hit.v);
+    const press = glow * 6, x = L.x + c * cw + 2, w = cw - 4;
+    // key body: tint by deviation, flash on strike
+    const [r, g, b] = devColor(d);
+    cx.fillStyle = `rgb(${Math.round(r * 0.55 + 18)},${Math.round(g * 0.55 + 20)},${Math.round(b * 0.55 + 26)})`;
+    cx.fillRect(x, L.top + press, w, L.keyH - press);
+    if (glow > 0) {
+      cx.fillStyle = `rgba(255,214,140,${0.85 * glow})`;
+      cx.fillRect(x, L.top + press, w, L.keyH - press);
+    }
+    cx.fillStyle = 'rgba(0,0,0,.35)'; cx.fillRect(x, L.top + L.keyH - 6, w, 6);
+    // deviation needle
+    if (Number.isFinite(d)) {
+      const y = L.top + L.keyH / 2 - clamp(d / 2, -1, 1) * (L.keyH / 2 - 10);
+      cx.fillStyle = '#c9cfdc'; cx.fillRect(x + 3, y - 1, w - 6, 2);
+    }
+    if (labels[c]) cx.drawImage(labels[c][glow > 0.3 ? 1 : 0], x + w / 2 + 3 - 10, L.top + L.keyH - 12 - 60, 14, 60);
+  }
+  // playhead over the cached waterfall
+  if (S.img && L.wfH > 40) {
+    const py = L.wfTop + (N - 1 - f) / N * L.wfH;
+    cx.fillStyle = S.mode === 'live' ? '#59d98e' : '#ffb347';
+    cx.fillRect(L.x, py - 0.5, L.kw, 1.5);
+  }
+  // the caption changes once per data minute; writing it every frame forced a layout each time
+  const mean = sum / (cnt || 1);
+  const txt = `${S.mode === 'live' ? 'LIVE' : 'REPLAY'}  ${new Date(S.t0 + f * MIN).toISOString().slice(0, 16).replace('T', ' ')}Z   Ø ${mean >= 0 ? '+' : ''}${mean.toFixed(2)} %   ·   click the history = replay`;
+  if (txt !== lastInfo) info.textContent = lastInfo = txt;
 }
 
 function scrub(e) {
@@ -610,7 +700,18 @@ cv.addEventListener('pointermove', e => dragging && scrub(e));
 cv.addEventListener('pointerup', () => dragging = false);
 
 resize();
-refresh().then(() => requestAnimationFrame(draw));
+// loading screen: one key per station, staggered drops; the hint about the
+// Paris fallback appears only if the first answer takes longer than 3 s
+const loading = document.getElementById('loading');
+loading.querySelector('.rain').append(...Array.from({ length: 25 }, () => {
+  const k = document.createElement('i'); k.style.setProperty('--d', `${(-Math.random() * 2.4).toFixed(2)}s`); return k;
+}));
+const slowHint = setTimeout(() => loading.classList.add('slow'), 3000);
+refresh().then(() => {
+  clearTimeout(slowHint);
+  loading.classList.add('done'); setTimeout(() => loading.hidden = true, 700);
+  requestAnimationFrame(draw);
+});
 setInterval(refresh, POLL);
 </script>
 </body>

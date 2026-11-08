@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Neutron Piano dev server: serves the static page and proxies NMDB.
 
-NMDB (www.nmdb.eu/nest) sends no CORS headers and answers with an HTML page
+NMDB's NEST interface sends no CORS headers and answers with an HTML page
 that wraps a semicolon-separated ASCII table, so the browser cannot read it
 directly. This server fetches it, parses the table and returns JSON.
+NEST runs in Kiel and, as a mirror, in Paris; see nmdb.php for the fallback.
 
     python3 serve.py [port]      # default 8765
 """
 
 import json
+import socket
 import re
 import sys
 import threading
@@ -28,8 +30,14 @@ STATIONS = [
     "JUNG1", "BKSN", "ROME", "AATB", "CALM", "MXCO", "ATHN",
 ]
 
-NEST = "https://www.nmdb.eu/nest/draw_graph.php"
+SOURCES = {
+    "Kiel": "https://www.nmdb.eu/nest/draw_graph.php",
+    "Paris": "https://previ.obspm.fr/nest/draw_graph.php",
+}
 CACHE_SECONDS = 55
+RETRY_MAIN_SECONDS = 1800
+STALE_MAX_SECONDS = 1800  # after that the page shows the outage
+_source = {"name": "", "since": 0.0}   # last source that answered
 _cache: dict[int, tuple[float, bytes]] = {}
 _lock = threading.Lock()
 
@@ -47,10 +55,32 @@ def fetch_nmdb(days: int) -> dict:
         ("last_days", str(days)),
         ("output", "ascii"),
     ]
-    url = NEST + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"User-Agent": "neutron-piano"})
-    with urllib.request.urlopen(req, timeout=40) as r:
-        text = r.read().decode("utf-8", "replace")
+    # the source that answered last goes first; a mirror only for RETRY_MAIN_SECONDS
+    names = list(SOURCES)
+    last = _source["name"]
+    if last in SOURCES and (last == names[0] or time.time() - _source["since"] < RETRY_MAIN_SECONDS):
+        names = [last] + [n for n in names if n != last]
+    errors, text = [], None
+    for name in names:
+        url = SOURCES[name] + "?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, headers={"User-Agent": "neutron-piano"})
+        try:
+            # a separate 10 s connect probe: Kiel drops packets when it is down,
+            # and the 40 s read timeout below would otherwise apply to connecting too
+            socket.create_connection((urllib.parse.urlparse(url).hostname, 443), timeout=10).close()
+            with urllib.request.urlopen(req, timeout=40) as r:
+                body = r.read().decode("utf-8", "replace")
+            if not re.search(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d;", body, re.M):
+                raise ValueError("no data rows")
+        except (OSError, ValueError, socket.timeout) as e:
+            errors.append(f"{name}: {e}")
+            continue
+        if name != last or time.time() - _source["since"] >= RETRY_MAIN_SECONDS:
+            _source.update(name=name, since=time.time())
+        text = body
+        break
+    if text is None:
+        raise ValueError("; ".join(errors))
 
     stations: list[str] = []
     rows: list[list] = []
@@ -65,7 +95,7 @@ def fetch_nmdb(days: int) -> dict:
             stations = line.split()
     if rows and len(rows[0]) - 1 != len(stations):
         raise ValueError("NMDB header/column mismatch")
-    return {"stations": stations, "rows": rows, "fetched": time.time()}
+    return {"stations": stations, "rows": rows, "fetched": time.time(), "source": name}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -86,8 +116,8 @@ class Handler(SimpleHTTPRequestHandler):
                 try:
                     body = json.dumps(fetch_nmdb(days)).encode()
                     _cache[days] = (time.time(), body)
-                except Exception as e:  # serve stale data rather than nothing
-                    if hit:
+                except Exception as e:  # serve stale data for a while rather than nothing
+                    if hit and time.time() - hit[0] < STALE_MAX_SECONDS:
                         body = hit[1]
                     else:
                         self.send_error(502, f"NMDB: {e}")
